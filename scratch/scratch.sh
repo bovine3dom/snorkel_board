@@ -73,3 +73,7 @@ wait_for () {
 	# not sure whether this is required
 	lipc-set-prop com.lab126.powerd -i deferSuspend 1
 }
+
+#
+sshfs kindle:/ kindle_remote
+cd kindle_remote/mnt/us/scratch

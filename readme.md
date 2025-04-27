@@ -32,8 +32,23 @@ https://github.com/Kuhno92/onlinescreensaverPW2 maybe?
 7. in KOreader -> settings -> screen -> sleep screen -> wallpaper -> show custom image (pick your image)
 
 
+# plan b
+
+1. copy scratch/kindle_wgetter.sh to /mnt/us/scratch/kindle_wgetter.sh
+
+2. add 
+
+```
+* * * * * /mnt/us/scratch/kindle_wgetter.sh 2>&1 > /mnt/us/scratch/kindle_wgetter.log
+```
+to /etc/crontab/root
+
+3. kill crond `kill $(ps aux | grep crond | awk '{print $2}')` and it will magically restart
+
 # todo: 
 
-- make web server update its data on a schedule. maybe?
-- check if onlinescreensaver actually updates with KOreader running
+- check if onlinescreensaver actually updates with KOreader running. (it does not on my pw1)
 - it'd be nice if the ticks lined up with midday
+- given the current workflow of "turn on the kindle and wait for it to go back on standby" it'd be nice if the image was rotated 90 degrees so that i could press the button without taking it out the mount
+
+
