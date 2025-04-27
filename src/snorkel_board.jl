@@ -105,26 +105,26 @@ end
 
 #f = Figure(; merge(MakieThemes.style_bbc(), MakieThemes.ggthemr(:greyscale))..., # lol no x axis at all
 
-function makegraphspls()
+function makegraphspls(height=1024, width=758)
     df, jelly_probed_df = grab_data(floor(Dates.now(), Dates.Minute(30))) # don't hammer their apis
     # this should really, really be cached. could maybe use https://github.com/marius311/Memoization.jl with a loop clearing the cache at set times
-    f = Figure(; size=(758/2, 1024/2), #MakieThemes.ggthemr(:greyscale)..., # defaults to 2x size ...
+    f = Figure(; size=(width/2, height/2), #MakieThemes.ggthemr(:greyscale)..., # defaults to 2x size ...
         fonts = (;
             #regular = "Dina TTF", # doesn't work :(
             bold = "Iosevka Term",
         ), fontsize = 12,
     )
-    ax = Axis(f[1,1], title="jellies", xticklabelrotation=pi/4)
+    ax = Axis(f[1,1], ylabel="jellies", xticklabelrotation=pi/8)
     # makie doesn't seem to fully support dates :(
     limits!(ax, (Dates.now()-jelly_window).instant.periods.value, Dates.now().instant.periods.value, nothing, nothing)
     lines!(f[1,1], jelly_probed_df.date_end, jelly_probed_df.n_jellies, color=:black) # nice. but what do we do if there's just zero data?
-    Axis(f[1,2], title="water temp", xticklabelrotation=pi/4)
+    Axis(f[1,2], ylabel="water temp", xticklabelrotation=pi/8)
     lines!(f[1,2], df[!, 2], df[!, 3], color=:black) # water temp. probably
-    Axis(f[2,1], title="wave height", xticklabelrotation=pi/4)
+    Axis(f[2,1], ylabel="wave height", xticklabelrotation=pi/8)
     barplot!(f[2,1], df[!, 2], df[!, 8], color=:black) # cool we are getting somewhere
-    Axis(f[2,2], title="wind", xticklabelrotation=pi/4)
+    Axis(f[2,2], ylabel="wind", xticklabelrotation=pi/8)
     lines!(f[2,2], df[!, 2], df[!, 7], color=:black) # wind
-    Label(f[3, :], string(Dates.now()), halign=:right, fontsize=10)
+    Label(f[:, 3], string(Dates.now()), valign=:top, fontsize=10, rotation=pi/2)
     return f
 end
 
@@ -140,8 +140,27 @@ IN_PRODUCTION = !isinteractive()
 
 using Oxygen
 
+import ImageTransformations: imrotate
+import HTTP
+using FileIO
+
+# adapted from Oxygen.jl/ext/CairoMakieExt.jl
+function mypng(fig, rot)
+    io = IOBuffer()
+    show(io, MIME("image/png"), fig)
+    img = load(io)
+    img = imrotate(img, rot)
+    io2 = IOBuffer()
+    save(FileIO.Stream(format"PNG", io2), img)
+    body = take!(io2)
+    resp = HTTP.Response(200, [], body)
+    HTTP.setheader(resp, "Content-Type" => "image/png")
+    HTTP.setheader(resp, "Content-Length" => string(sizeof(body)))
+    return resp
+end
+
 @get "/graph" function()
-    png(makegraphspls()) # todo: 4 bits per pixel rather than 8
+    mypng(makegraphspls(758, 1024), pi/2) # todo: 4 bits per pixel rather than 8
 end
 
 serve(; host="0.0.0.0", port=PORT)
