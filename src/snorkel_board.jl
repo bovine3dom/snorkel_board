@@ -77,7 +77,18 @@ jelly_window = Dates.Week(1)
     # # includes eastern bay of st jean cap ferrat
     # jelly_raw = HTTP.get("https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.71832631212757+7.340712547302247,43.71832631212757+7.292132377624513,43.68196347975282+7.292132377624513,43.68196347975282+7.340712547302247,43.71832631212757+7.340712547302247))%27+and+observation_date+ge+%272025-01-01T16:44:11.497Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc").body |> String
     # # literally just villefranche_sur_mer
-    jelly_raw = HTTP.get("https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.71144016493395+7.327322959899903,43.71144016493395+7.300372123718263,43.679046051522036+7.300372123718263,43.679046051522036+7.327322959899903,43.71144016493395+7.327322959899903))%27+and+observation_date+ge+%27$(Dates.now() - jelly_window)Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc").body |> String
+    # nice
+    # https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.70756248159074+7.290029525756837,43.70756248159074+7.23552703857422,43.67516627295159+7.23552703857422,43.67516627295159+7.290029525756837,43.70756248159074+7.290029525756837))%27+and+observation_date+ge+%272025-04-25T18:39:42.669Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc
+    villefrance_url = "https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.71144016493395+7.327322959899903,43.71144016493395+7.300372123718263,43.679046051522036+7.300372123718263,43.679046051522036+7.327322959899903,43.71144016493395+7.327322959899903))%27+and+observation_date+ge+%27$(Dates.now() - jelly_window)Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc"
+    nice_url = "https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.70756248159074+7.290029525756837,43.70756248159074+7.23552703857422,43.67516627295159+7.23552703857422,43.67516627295159+7.290029525756837,43.70756248159074+7.290029525756837))%27+and+observation_date+ge+%27$(Dates.now() - jelly_window)Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc"
+    jelly_probed_vf = grabjellies(villefrance_url)
+    jelly_probed_nice = grabjellies(nice_url)
+
+    return (df, jelly_probed_vf, jelly_probed_nice)
+end
+
+function grabjellies(url)
+    jelly_raw = HTTP.get(url).body |> String
     # should automatically update date here
 
     jelly = JSON.parse(jelly_raw)["value"]
@@ -98,15 +109,14 @@ jelly_window = Dates.Week(1)
     for (i, r) in enumerate(eachrow(jelly_probed_df))
         jelly_probed_df.n_jellies[i] = sum(jelly_df[r.date_start .<= jelly_df.date .< r.date_end, :n_jellies])
     end
-
-    return (df, jelly_probed_df)
+    return jelly_probed_df
 end
 
 
 #f = Figure(; merge(MakieThemes.style_bbc(), MakieThemes.ggthemr(:greyscale))..., # lol no x axis at all
 
 function makegraphspls(height=1024, width=758)
-    df, jelly_probed_df = grab_data(floor(Dates.now(), Dates.Minute(30))) # don't hammer their apis
+    df, jelly_probed_vf, jelly_probed_nice = grab_data(floor(Dates.now(), Dates.Minute(30))) # don't hammer their apis
     # this should really, really be cached. could maybe use https://github.com/marius311/Memoization.jl with a loop clearing the cache at set times
     f = Figure(; size=(width/2, height/2), #MakieThemes.ggthemr(:greyscale)..., # defaults to 2x size ...
         fonts = (;
@@ -117,7 +127,9 @@ function makegraphspls(height=1024, width=758)
     ax = Axis(f[1,1], ylabel="jellies", xticklabelrotation=pi/8)
     # makie doesn't seem to fully support dates :(
     limits!(ax, (Dates.now()-jelly_window).instant.periods.value, Dates.now().instant.periods.value, nothing, nothing)
-    lines!(f[1,1], jelly_probed_df.date_end, jelly_probed_df.n_jellies, color=:black) # nice. but what do we do if there's just zero data?
+    lines!(f[1,1], jelly_probed_vf.date_end, jelly_probed_vf.n_jellies, color=:black, label="vf") # nice. but what do we do if there's just zero data?
+    lines!(f[1,1], jelly_probed_nice.date_end, jelly_probed_nice.n_jellies, color=:black, linestyle=:dash, label="nice") # nice.
+    axislegend(ax, merge=true, unique=true, framevisible=false, position=:lt)
     Axis(f[1,2], ylabel="water temp", xticklabelrotation=pi/8)
     lines!(f[1,2], df[!, 2], df[!, 3], color=:black) # water temp. probably
     Axis(f[2,1], ylabel="wave height", xticklabelrotation=pi/8)
