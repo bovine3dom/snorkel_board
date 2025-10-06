@@ -122,7 +122,9 @@ fi
 # 6. Get File using wget
 echo "Downloading '$FILE_URL' to '$OUTPUT_FILE'..."
 # -q: quiet, -T: timeout, -O: output file
-wget -q -T $WGET_TIMEOUT -O "$OUTPUT_FILE" "$FILE_URL"
+# wget -q -T $WGET_TIMEOUT -O "$OUTPUT_FILE" "$FILE_URL"
+# disable cert checking as kindle is much too old
+curl -k "$FILE_URL" > "$OUTPUT_FILE"
 wget_exit_code=$?
 
 if [ $wget_exit_code -eq 0 ]; then
