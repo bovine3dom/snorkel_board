@@ -14,7 +14,18 @@ pd = pyimport("pandas")
 # lines(jelly_probed_df.date_end, jelly_probed_df.n_jellies) # nice. but what do we do if there's just zero data?
 
 jelly_window = Dates.Week(1)
-# e.g. grab_data(floor(Dates.now(), Dates.Hour))
+# Meteociel uses Paris local dates.
+function paris_time(utc)
+    sunday(month) = (d = lastdayofmonth(Date(year(utc), month, 1)); d - Day(dayofweek(d) % 7))
+    summer = DateTime(sunday(3)) + Hour(1) <= utc < DateTime(sunday(10)) + Hour(1)
+    utc + Hour(summer ? 2 : 1)
+end
+function first_forecast_date(daynumber, today)
+    monthstart = firstdayofmonth(today)
+    candidates = [m + Day(daynumber - 1) for m in (monthstart - Month(1), monthstart, monthstart + Month(1)) if day(m + Day(daynumber - 1)) == daynumber]
+    candidates[argmin(abs.(Dates.value.(candidates .- today)))]
+end
+# e.g. grab_data(floor(Dates.now(Dates.UTC), Dates.Hour))
 @memoize function grab_data(timestamp) # timestamp only used for cache
     vagues = HTTP.get("https://www.meteociel.fr/previsions-mer-vagues-houle/2074/villefranche_sur_mer.htm")
     vagues_body = String(vagues.body)
@@ -32,9 +43,9 @@ jelly_window = Dates.Week(1)
     df[!, 8:end] # 8 = vagues haut, 3 # temp
     df[!, 3:end] # 8 = vagues haut, 3 temp, 7 gusts
 
-    # parsing dates is kinda annoying but we can probably cheat
-
-    times_working = Dates.today() .+ Time.(df[!, 2])
+    today = Date(paris_time(Dates.now(Dates.UTC)))
+    daynumber = parse(Int, match(r"\d+", string(df[1, 1])).match)
+    times_working = first_forecast_date(daynumber, today) .+ Time.(df[!, 2])
     for (i,_) in enumerate(times_working[2:end])
         if times_working[i+1] < times_working[i] # i is always i-1
             times_working[(i+1):end] .+= Day(1)
@@ -43,9 +54,10 @@ jelly_window = Dates.Week(1)
     times_working
 
     df[!, 2] = times_working
-    df[!, 3] = parse.(Float64, df[!, 3])
-    df[!, 8] = parse.(Float64, df[!, 8])
-    df[!, 7] = parse.(Float64, df[!, 7])
+    parse_value(x) = something(tryparse(Float64, string(x)), missing)
+    df[!, 3] = parse_value.(df[!, 3])
+    df[!, 8] = parse_value.(df[!, 8])
+    df[!, 7] = parse_value.(df[!, 7])
 
     # lines(df[!, 2], df[!, 3]) # air temperature (i think)
     # barplot(df[!, 2], df[!, 8]) # cool we are getting somewhere
@@ -79,15 +91,16 @@ jelly_window = Dates.Week(1)
     # # literally just villefranche_sur_mer
     # nice
     # https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.70756248159074+7.290029525756837,43.70756248159074+7.23552703857422,43.67516627295159+7.23552703857422,43.67516627295159+7.290029525756837,43.70756248159074+7.290029525756837))%27+and+observation_date+ge+%272025-04-25T18:39:42.669Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc
-    villefrance_url = "https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.71144016493395+7.327322959899903,43.71144016493395+7.300372123718263,43.679046051522036+7.300372123718263,43.679046051522036+7.327322959899903,43.71144016493395+7.327322959899903))%27+and+observation_date+ge+%27$(Dates.now() - jelly_window)Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc"
-    nice_url = "https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.70756248159074+7.290029525756837,43.70756248159074+7.23552703857422,43.67516627295159+7.23552703857422,43.67516627295159+7.290029525756837,43.70756248159074+7.290029525756837))%27+and+observation_date+ge+%27$(Dates.now() - jelly_window)Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc"
-    jelly_probed_vf = grabjellies(villefrance_url)
-    jelly_probed_nice = grabjellies(nice_url)
+    jelly_now = Dates.now(Dates.UTC)
+    villefrance_url = "https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.71144016493395+7.327322959899903,43.71144016493395+7.300372123718263,43.679046051522036+7.300372123718263,43.679046051522036+7.327322959899903,43.71144016493395+7.327322959899903))%27+and+observation_date+ge+%27$(jelly_now - jelly_window)Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc"
+    nice_url = "https://meduse.acri.fr/api/v1/campaigns/meduse/observations?lang=en&campaign=meduse&filter=location+geointersects+%27POLYGON((43.70756248159074+7.290029525756837,43.70756248159074+7.23552703857422,43.67516627295159+7.23552703857422,43.67516627295159+7.290029525756837,43.70756248159074+7.290029525756837))%27+and+observation_date+ge+%27$(jelly_now - jelly_window)Z%27&count=true&limit=50&skip=0&orderby=observation_date+desc"
+    jelly_probed_vf = grabjellies(villefrance_url, jelly_now)
+    jelly_probed_nice = grabjellies(nice_url, jelly_now)
 
     return (df, jelly_probed_vf, jelly_probed_nice)
 end
 
-function grabjellies(url)
+function grabjellies(url, now)
     jelly_raw = HTTP.get(url).body |> String
     # should automatically update date here
 
@@ -101,9 +114,10 @@ function grabjellies(url)
     )
 
     # all the times are zulu time. just like Dates ones.
-    jelly_df = DataFrame(date=map(j -> DateTime(j["observation_date"][1:end-1]), jelly), n_jellies=map(j -> word2num[get(j["data"], "quantity", "none")], jelly))
+    filter!(j -> get(j, "data", nothing) isa AbstractDict && haskey(j["data"], "quantity") && haskey(word2num, j["data"]["quantity"]), jelly)
+    jelly_df = DataFrame(date=map(j -> DateTime(j["observation_date"][1:end-1]), jelly), n_jellies=map(j -> word2num[j["data"]["quantity"]], jelly))
     window_size = 24
-    probes = collect((Dates.now() - jelly_window):Hour(window_size):(Dates.now()+Hour(window_size)))
+    probes = collect((now - jelly_window):Hour(window_size):(now + Hour(window_size)))
     jelly_probed_df = DataFrame(date_start=probes[1:end-1], date_end=probes[2:end], n_jellies=fill(0, length(probes)-1))
 
     for (i, r) in enumerate(eachrow(jelly_probed_df))
@@ -116,7 +130,7 @@ end
 #f = Figure(; merge(MakieThemes.style_bbc(), MakieThemes.ggthemr(:greyscale))..., # lol no x axis at all
 
 function makegraphspls(height=1024, width=758)
-    df, jelly_probed_vf, jelly_probed_nice = grab_data(floor(Dates.now(), Dates.Minute(30))) # don't hammer their apis
+    df, jelly_probed_vf, jelly_probed_nice = grab_data(floor(Dates.now(Dates.UTC), Dates.Minute(30))) # don't hammer their apis
     # this should really, really be cached. could maybe use https://github.com/marius311/Memoization.jl with a loop clearing the cache at set times
     f = Figure(; size=(width/2, height/2), #MakieThemes.ggthemr(:greyscale)..., # defaults to 2x size ...
         fonts = (;
@@ -126,7 +140,7 @@ function makegraphspls(height=1024, width=758)
     )
     ax = Axis(f[1,1], ylabel="jellies", xticklabelrotation=pi/8)
     # makie doesn't seem to fully support dates :(
-    limits!(ax, (Dates.now()-jelly_window).instant.periods.value, Dates.now().instant.periods.value, nothing, nothing)
+    limits!(ax, (Dates.now(Dates.UTC)-jelly_window).instant.periods.value, Dates.now(Dates.UTC).instant.periods.value, nothing, nothing)
     lines!(f[1,1], jelly_probed_vf.date_end, jelly_probed_vf.n_jellies, color=:black, label="vf") # nice. but what do we do if there's just zero data?
     lines!(f[1,1], jelly_probed_nice.date_end, jelly_probed_nice.n_jellies, color=:black, linestyle=:dash, label="nice") # nice.
     axislegend(ax, merge=true, unique=true, framevisible=false, position=:lt)
@@ -136,7 +150,7 @@ function makegraphspls(height=1024, width=758)
     barplot!(f[2,1], df[!, 2], df[!, 8], color=:black) # cool we are getting somewhere
     Axis(f[2,2], ylabel="wind", xticklabelrotation=pi/8)
     lines!(f[2,2], df[!, 2], df[!, 7], color=:black) # wind
-    Label(f[:, 3], string(Dates.now()), valign=:top, fontsize=10, rotation=pi/2)
+    Label(f[:, 3], string(paris_time(Dates.now(Dates.UTC))), valign=:top, fontsize=10, rotation=pi/2)
     return f
 end
 
@@ -173,6 +187,14 @@ end
 
 @get "/graph" function()
     mypng(makegraphspls(758, 1024), pi/2) # todo: 4 bits per pixel rather than 8
+end
+
+@get "/data" function()
+    df, vf, nice = grab_data(floor(Dates.now(Dates.UTC), Dates.Minute(30)))
+    return Dict(
+        "forecast" => [Dict("time" => string(r[2]), "water_c" => r[3], "wave_m" => r[8]) for r in eachrow(df)],
+        "jellies" => [Dict("end" => floor(Int, Dates.datetime2unix(vf.date_end[i])), "nice" => nice.n_jellies[i], "vf" => vf.n_jellies[i]) for i in 1:(nrow(vf)-1)]
+    )
 end
 
 serve(; host="0.0.0.0", port=PORT)
